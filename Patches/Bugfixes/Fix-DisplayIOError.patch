@@ -1,0 +1,31 @@
+Name: Fix DOS error code # displayed on I/O error
+Author: Adrian Siekierka <kontakt@asie.pl>
+
+In Turbo Pascal, calling IOResult also resets its value for future checks.
+This causes the "Error #" in ZZT's error message to always be 0, and not
+reflect the correct DOS error code.
+
+--- src.orig/SRC/GAME.PAS	2020-03-16 14:53:28.665824692 +0100
++++ src/SRC/GAME.PAS	2020-03-16 18:28:39.920497587 +0100
+@@ -651,17 +651,19 @@ procedure PauseOnError;
+ 
+ function DisplayIOError: boolean;
+ 	var
++		ioResVal: word;
+ 		errorNumStr: string[50];
+ 		textWindow: TTextWindowState;
+ 	begin
+-		if IOResult = 0 then begin
++		ioResVal := IOResult;
++		if ioResVal = 0 then begin
+ 			DisplayIOError := false;
+ 			exit;
+ 		end;
+ 
+ 		DisplayIOError := true;
+ 
+-		Str(IOResult, textWindow.Title);
++		Str(ioResVal, textWindow.Title);
+ 		textWindow.Title := 'Error # ' + textWindow.Title;
+ 		TextWindowInitState(textWindow);
+ 		TextWindowAppend(textWindow, '$DOS Error: ');

@@ -1,0 +1,14 @@
+Name: Fix #put on bottom row
+Author: Adrian Siekierka <kontakt@asie.pl>
+
+--- src.orig/SRC/OOP.PAS	2020-03-16 14:53:28.665824692 +0100
++++ src/SRC/OOP.PAS	2020-03-16 16:27:51.190965696 +0100
+@@ -744,7 +744,7 @@ procedure OopExecute(statId: integer; va
+ 							else if ((X + deltaX) > 0)
+ 								and ((X + deltaX) <= BOARD_WIDTH)
+ 								and ((Y + deltaY) > 0)
+-								and ((Y + deltaY) < BOARD_HEIGHT) then
++								and ((Y + deltaY) <= BOARD_HEIGHT) then
+ 							begin
+ 								if not ElementDefs[Board.Tiles[X + deltaX][Y + deltaY].Element].Walkable then
+ 									ElementPushablePush(X + deltaX, Y + deltaY, deltaX, deltaY);

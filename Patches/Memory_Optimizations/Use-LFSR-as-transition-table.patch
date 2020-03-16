@@ -1,0 +1,147 @@
+Name: Optimize memory usage: use LFSR for transition effects
+Author: Adrian Siekierka <kontakt@asie.pl>
+
+Instead of pre-calculating a transition table (8KB, could be reduced to 3KB),
+use an LFSR algorithm to iterate over coordinates.
+
+Causes a slight increase in executable size and somewhat slower transitions,
+but saves the above-mentioned 8KB of memory.
+
+--- src.orig/SRC/GAME.PAS	2020-03-16 14:53:28.665824692 +0100
++++ src/SRC/GAME.PAS	2020-03-16 15:24:55.096261402 +0100
+@@ -35,7 +35,6 @@ interface
+ 		PROMPT_ANY = 2;
+ 	procedure SidebarClearLine(y: integer);
+ 	procedure SidebarClear;
+-	procedure GenerateTransitionTable;
+ 	procedure AdvancePointer(var address: pointer; count: integer);
+ 	procedure BoardClose;
+ 	procedure BoardOpen(boardId: integer);
+@@ -86,6 +85,7 @@ interface
+ 	procedure GameTitleLoop;
+ 	procedure GamePrintRegisterMessage;
+ const
++	LFSR11_START = 42;
+ 	ProgressAnimColors: array[0 .. 7] of byte = ($14, $1C, $15, $1D, $16, $1E, $17, $1F);
+ 	ProgressAnimStrings: array[0 .. 7] of string[5] =
+ 		('....|', '...*/', '..*.-', '.*..\', '*...|', '..../', '....-', '....\');
+@@ -109,6 +109,14 @@ const
+ implementation
+ uses Dos, Crt, Video, Sounds, Input, Elements, Editor, Oop;
+ 
++function LFSR11UpdateSeed(var seed: word; var tx, ty: byte): boolean;
++	begin
++		seed := (seed shr 1) xor ((-(seed and 1)) and $740);
++		tx := (seed - 1) and $3F;
++		ty := ((seed - 1) shr 6) and $3F;
++		LFSR11UpdateSeed := seed = LFSR11_START;
++	end;
++
+ procedure SidebarClearLine(y: integer);
+ 	begin
+ 		VideoWriteText(60, y, $11, #179'                   ');
+@@ -122,28 +130,6 @@ procedure SidebarClear;
+ 			SidebarClearLine(i);
+ 	end;
+ 
+-procedure GenerateTransitionTable;
+-	var
+-		ix, iy: integer;
+-		t: TCoord;
+-	begin
+-		TransitionTableSize := 0;
+-		for iy := 1 to BOARD_HEIGHT do
+-			for ix := 1 to BOARD_WIDTH do begin
+-				TransitionTableSize := TransitionTableSize + 1;
+-				TransitionTable[TransitionTableSize].X := ix;
+-				TransitionTable[TransitionTableSize].Y := iy;
+-			end;
+-
+-		{ shuffle }
+-		for ix := 1 to TransitionTableSize do begin
+-			iy := Random(TransitionTableSize) + 1;
+-			t := TransitionTable[iy];
+-			TransitionTable[iy] := TransitionTable[ix];
+-			TransitionTable[ix] := t;
+-		end;
+-	end;
+-
+ procedure AdvancePointer(var address: pointer; count: integer);
+ 	begin
+ 		address := Ptr(Seg(address^), Ofs(address^) + count);
+@@ -357,10 +343,17 @@ procedure WorldCreate;
+ 
+ procedure TransitionDrawToFill(chr: char; color: integer);
+ 	var
+-		i: integer;
++		seed: word;
++		tx, ty: byte;
+ 	begin
+-		for i := 1 to TransitionTableSize do
+-			VideoWriteText(TransitionTable[i].X - 1, TransitionTable[i].Y - 1, color, chr);
++		seed := LFSR11_START;
++		repeat
++			if (tx < 60) and (ty < 25) then
++				VideoWriteText(tx, ty, color, chr);
++		until LFSR11UpdateSeed(seed, tx, ty);
++
++		if (tx < 60) and (ty < 25) then
++			VideoWriteText(tx, ty, color, chr);
+ 	end;
+ 
+ procedure BoardDrawTile(x, y: integer);
+@@ -415,13 +408,20 @@ procedure BoardDrawBorder;
+ 
+ procedure TransitionDrawToBoard;
+ 	var
+-		i: integer;
++		seed: word;
++		tx, ty: byte;
+ 	begin
+ 		BoardDrawBorder;
+ 
+-		for i := 1 to TransitionTableSize do
+-			with TransitionTable[i] do
+-				BoardDrawTile(X, Y);
++		seed := LFSR11_START;
++		repeat
++			if (tx < 60) and (ty < 25) then
++				BoardDrawTile(tx+1, ty+1);
++		until LFSR11UpdateSeed(seed, tx, ty);
++
++
++		if (tx < 60) and (ty < 25) then
++			BoardDrawTile(tx+1, ty+1);
+ 	end;
+ 
+ procedure SidebarPromptCharacter(editable: boolean; x, y: integer; prompt: TString50; var value: byte);
+diff -Nrup src.orig/SRC/GAMEVARS.PAS src/SRC/GAMEVARS.PAS
+--- src.orig/SRC/GAMEVARS.PAS	2020-03-16 14:53:28.665824692 +0100
++++ src/SRC/GAMEVARS.PAS	2020-03-16 15:03:36.757785423 +0100
+@@ -152,7 +152,6 @@ interface
+ 		unkVar_0476: integer;
+ 		unkVar_0478: integer;
+ 
+-		TransitionTable: array[1 .. 80*25] of TCoord;
+ 		LoadedGameFileName: TString50;
+ 		SavedGameFileName: TString50;
+ 		SavedBoardFileName: TString50;
+@@ -177,7 +176,6 @@ interface
+ 		GameStateElement: integer;
+ 		ReturnBoardId: integer;
+ 
+-		TransitionTableSize: integer;
+ 		TickSpeed: byte;
+ 
+ 		IoTmpBuf: ^TIoTmpBuf;
+diff -Nrup src.orig/SRC/ZZT.PAS src/SRC/ZZT.PAS
+--- src.orig/SRC/ZZT.PAS	2020-03-16 14:53:28.666824692 +0100
++++ src/SRC/ZZT.PAS	2020-03-16 15:03:38.686785298 +0100
+@@ -167,7 +167,6 @@ begin
+ 		DebugEnabled := false;
+ 		SavedGameFileName := 'SAVED';
+ 		SavedBoardFileName := 'TEMP';
+-		GenerateTransitionTable;
+ 		WorldCreate;
+ 
+ 		GameTitleLoop;

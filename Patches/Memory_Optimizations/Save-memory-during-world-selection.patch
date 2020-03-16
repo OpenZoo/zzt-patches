@@ -1,0 +1,26 @@
+Name: Unload I/O buffer on world selection
+Author: Adrian Siekierka <kontakt@asie.pl>
+
+--- src.orig/SRC/GAME.PAS	2020-03-16 14:53:28.665824692 +0100
++++ src/SRC/GAME.PAS	2020-03-16 15:28:33.293247312 +0100
+@@ -833,6 +833,11 @@ function GameWorldLoad(extension: TStrin
+ 		entryName: string;
+ 		i: integer;
+ 	begin
++		{ As directory listings can take up a lot of memory, }
++		{ free IoTmpBuf for the duration - the data will be }
++		{ unloaded later anyway. - asie }
++		Dispose(IoTmpBuf);
++
+ 		TextWindowInitState(textWindow);
+ 		if extension = '.ZZT' then
+ 			textWindow.Title := 'ZZT Worlds'
+@@ -868,6 +873,8 @@ function GameWorldLoad(extension: TStrin
+ 		end;
+ 
+ 		TextWindowFree(textWindow);
++
++		New(IoTmpBuf);
+ 	end;
+ 
+ procedure CopyStatDataToTextWindow(statId: integer; var state: TTextWindowState);

@@ -1,0 +1,490 @@
+Name: Use EMS memory for boards
+Author: Adrian Siekierka <kontakt@asie.pl>
+
+Allows boards to be loaded to EMS memory, freeing conventional memory and
+allowing much larger .ZZT worlds to be loaded.
+
+Note that currently, this uses memory pages rather inefficiently.
+
+--- src.orig/SRC/EDITOR.PAS	2020-03-16 14:53:28.664824692 +0100
++++ src/SRC/EDITOR.PAS	2020-03-16 21:02:42.092900746 +0100
+@@ -40,7 +40,7 @@ interface
+ 	function EditorSelectBoard(title: string; currentBoard: integer; titleScreenIsNone: boolean): integer;
+ 
+ implementation
+-uses Dos, Crt, Video, Sounds, Input, Elements, Oop, Game;
++uses Dos, Crt, EmsMem, Video, Sounds, Input, Elements, Oop, Game;
+ 
+ type
+ 	TDrawMode = (DrawingOff, DrawingOn, TextEntry);
+@@ -542,15 +542,18 @@ procedure EditorLoop;
+ 						if DisplayIOError then goto TransferEnd;
+ 
+ 						BoardClose;
+-						FreeMem(World.BoardData[World.Info.CurrentBoard], World.BoardLen[World.Info.CurrentBoard]);
++						EmsFree(World.BoardData[World.Info.CurrentBoard], World.BoardLen[World.Info.CurrentBoard]);
+ 						BlockRead(f, World.BoardLen[World.Info.CurrentBoard], 2);
+ 						if not DisplayIOError then begin
+-							GetMem(World.BoardData[World.Info.CurrentBoard], World.BoardLen[World.Info.CurrentBoard]);
+-							BlockRead(f, World.BoardData[World.Info.CurrentBoard]^,
+-								World.BoardLen[World.Info.CurrentBoard]);
++							EmsAllocate(World.BoardData[World.Info.CurrentBoard], World.BoardLen[World.Info.CurrentBoard]);
++							if EmsError = $00 then begin
++								BlockRead(f, IoTmpBuf^,
++									World.BoardLen[World.Info.CurrentBoard]);
++								EmsMoveTo(World.BoardLen[World.Info.CurrentBoard], IoTmpBuf, World.BoardData[World.Info.CurrentBoard]);
++							end;
+ 						end;
+ 
+-						if DisplayIOError then begin
++						if DisplayIOError or DisplayEMSError(false) then begin
+ 							World.BoardLen[World.Info.CurrentBoard] := 0;
+ 							BoardCreate;
+ 							EditorDrawRefresh;
+@@ -570,8 +573,8 @@ procedure EditorLoop;
+ 
+ 						BoardClose;
+ 						BlockWrite(f, World.BoardLen[World.Info.CurrentBoard], 2);
+-						BlockWrite(f, World.BoardData[World.Info.CurrentBoard]^,
+-							World.BoardLen[World.Info.CurrentBoard]);
++						EmsMoveFrom(World.BoardLen[World.Info.CurrentBoard], World.BoardData[World.Info.CurrentBoard], IoTmpBuf);
++						BlockWrite(f, IoTmpBuf^, World.BoardLen[World.Info.CurrentBoard]);
+ 						BoardOpen(World.Info.CurrentBoard);
+ 
+ 						if DisplayIOError then begin
+@@ -1070,7 +1073,6 @@ procedure HighScoresAdd(score: integer);
+ 
+ function EditorGetBoardName(boardId: integer; titleScreenIsNone: boolean): TString50;
+ 	var
+-		boardData: pointer;
+ 		copiedName: string[50];
+ 	begin
+ 		if (boardId = 0) and titleScreenIsNone then
+@@ -1078,8 +1080,7 @@ function EditorGetBoardName(boardId: int
+ 		else if (boardId = World.Info.CurrentBoard) then
+ 			EditorGetBoardName := Board.Name
+ 		else begin
+-			boardData := World.BoardData[boardId];
+-			Move(boardData^, copiedName, SizeOf(copiedName));
++			EmsMoveFrom(SizeOf(copiedName), World.BoardData[boardId], @copiedName);
+ 			EditorGetBoardName := copiedName;
+ 		end;
+ 	end;
+diff -Nrup src.orig/SRC/EMSMEM.PAS src/SRC/EMSMEM.PAS
+--- src.orig/SRC/EMSMEM.PAS	1970-01-01 01:00:00.000000000 +0100
++++ src/SRC/EMSMEM.PAS	2020-03-16 21:07:13.281883233 +0100
+@@ -0,0 +1,230 @@
++{
++	Copyright (c) 2020 Adrian Siekierka
++
++	Permission is hereby granted, free of charge, to any person obtaining a copy
++	of this software and associated documentation files (the "Software"), to deal
++	in the Software without restriction, including without limitation the rights
++	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++	copies of the Software, and to permit persons to whom the Software is
++	furnished to do so, subject to the following conditions:
++
++	The above copyright notice and this permission notice shall be included in all
++	copies or substantial portions of the Software.
++
++	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++	SOFTWARE.
++}
++
++{$I-}
++unit EmsMem;
++
++interface
++	const
++		EMS_MEM_CONVENTIONAL = 0;
++		EMS_MEM_EXPANDED = 1;
++	type
++		EmsPointer = record
++			PType: byte;
++			Handle: word;
++			Offset: word;
++			Segment: word;
++		end;
++	var
++		EmsError: byte;
++	procedure EmsMove(length: word; source, dest: EmsPointer);
++	procedure EmsMoveFrom(length: word; source: EmsPointer; dest: pointer);
++	procedure EmsMoveTo(length: word; source: pointer; dest: EmsPointer);
++	procedure EmsAllocate(var p: EmsPointer; length: word);
++	procedure EmsFree(var p: EmsPointer; length: word);
++	function EmsPagesAvail: word;
++	function EmsAvailable: boolean;
++	procedure EmsForceDisable;
++
++implementation		
++uses Crt, Dos;
++
++const
++	EMS_PAGE_SIZE = 16384;
++	MIN_EMS_VERSION = $40;
++type
++	HeapErrorFunc = function(size: word): integer;
++	EmsCopyData = record
++		Length: longint;
++		Source: EmsPointer;
++		Dest: EmsPointer;
++	end;
++var
++	EmsVersion: byte;
++
++{$F+}
++
++function EmsHeapErrorHandler(size: word): integer;
++	begin
++		EmsError := $88;
++		EmsHeapErrorHandler := 1; { prevent runtime error }
++	end;
++
++function EmsDefHeapErrorHandler(size: word): integer;
++	begin
++		EmsDefHeapErrorHandler := 0; { crash! }
++	end;
++
++{$F-}
++
++procedure EmsMove(length: word; source, dest: EmsPointer);
++	var
++		copyData: EmsCopyData;
++		regs: Registers;
++	begin
++		if (source.PType = EMS_MEM_CONVENTIONAL) and (dest.PType = EMS_MEM_CONVENTIONAL) then begin
++			Move(Ptr(source.Segment, source.Offset)^, Ptr(dest.Segment, dest.Offset)^, length);
++			EmsError := $00;
++			exit;
++		end;
++
++		if EMSVersion < MIN_EMS_VERSION then begin
++			EmsError := $80;
++			exit;
++		end;
++
++		copyData.Length := length;
++		copyData.Source := source;
++		copyData.Dest := dest;
++
++		if copyData.Source.PType = EMS_MEM_CONVENTIONAL then
++			copyData.Source.Handle := 0;
++		if copyData.Dest.PType = EMS_MEM_CONVENTIONAL then
++			copyData.Dest.Handle := 0;
++
++		regs.AX := $5700; { move }
++		regs.DS := Seg(copyData);
++		regs.SI := Ofs(copyData);
++		Intr($67, regs);
++		
++		EmsError := regs.AH;
++	end;
++
++procedure EmsMoveFrom(length: word; source: EmsPointer; dest: pointer);
++	var
++		destEms: EmsPointer;
++	begin
++		destEms.PType := EMS_MEM_CONVENTIONAL;
++		destEms.Segment := Seg(dest^);
++		destEms.Offset := Ofs(dest^);
++		EmsMove(length, source, destEms);
++	end;
++
++procedure EmsMoveTo(length: word; source: pointer; dest: EmsPointer);
++	var
++		srcEms: EmsPointer;
++	begin
++		srcEms.PType := EMS_MEM_CONVENTIONAL;
++		srcEms.Segment := Seg(source^);
++		srcEms.Offset := Ofs(source^);
++		EmsMove(length, srcEms, dest);
++	end;
++
++procedure EmsAllocate(var p: EmsPointer; length: word);
++	var
++		convPtr: pointer;
++		regs: Registers;
++	begin
++		if EmsVersion >= MIN_EMS_VERSION then begin
++			regs.AH := $43;
++			regs.BX := (length + EMS_PAGE_SIZE - 1) div EMS_PAGE_SIZE;
++			Intr($67, regs);
++
++			EmsError := regs.AH;
++			if EmsError = $00 then begin
++				p.PType := EMS_MEM_EXPANDED;
++				p.Handle := regs.DX;
++				p.Segment := 0;
++				p.Offset := 0;
++
++				exit;
++			end;
++		end;
++
++		{ no EMS - try allocating conventional pointer }
++		HeapError := @EmsHeapErrorHandler;
++		EmsError := $00;
++
++		GetMem(convPtr, length);
++		if EmsError = $00 then begin
++			p.PType := EMS_MEM_CONVENTIONAL;
++			p.Segment := Seg(convPtr^);
++			p.Offset := Ofs(convPtr^);
++		end;
++
++		HeapError := @EmsDefHeapErrorHandler;
++	end;
++
++procedure EmsFree(var p: EmsPointer; length: word);
++	var
++		regs: Registers;
++	begin
++		if p.PType = EMS_MEM_EXPANDED then begin
++			regs.AH := $45;
++			regs.DX := p.Handle;
++			Intr($67, regs);
++
++			EmsError := regs.AH;
++			exit;
++		end else begin
++			HeapError := @EmsHeapErrorHandler;
++			EmsError := $00;
++
++			FreeMem(Ptr(p.Segment, p.Offset), length);
++
++			HeapError := @EmsDefHeapErrorHandler;
++		end;
++	end;
++
++function EmsPagesAvail: word;
++	var
++		regs: Registers;
++	begin
++		if EmsVersion < MIN_EMS_VERSION then begin
++			EmsPagesAvail := 0;
++			exit;
++		end;
++
++		regs.AH := $42;
++		regs.BX := 0;
++		Intr($67, regs);
++
++		EmsPagesAvail := regs.BX;
++	end;
++
++function EmsAvailable: boolean;
++	begin
++		EmsAvailable := (EmsVersion >= MIN_EMS_VERSION);
++	end;
++
++procedure EmsForceDisable;
++	begin
++		EmsVersion := $00;
++	end;
++
++procedure EmsInit;
++	var
++		regs: Registers;
++	begin
++		regs.AH := $46;
++		Intr($67, regs);
++
++		if regs.AH = $00 then
++			EmsVersion := regs.AL
++		else
++			EmsVersion := $00;
++	end;
++
++begin
++	EmsInit;
++	HeapError := @EmsDefHeapErrorHandler;
++end.
+diff -Nrup src.orig/SRC/GAME.PAS src/SRC/GAME.PAS
+--- src.orig/SRC/GAME.PAS	2020-03-16 14:53:28.665824692 +0100
++++ src/SRC/GAME.PAS	2020-03-16 21:05:16.216890793 +0100
+@@ -55,6 +55,7 @@ interface
+ 	procedure SidebarPromptString(prompt: string; extension: TString50; var filename: string; promptMode: byte);
+ 	procedure PauseOnError;
+ 	function DisplayIOError: boolean;
++	function DisplayEMSError(fatal: boolean): boolean;
+ 	procedure WorldUnload;
+ 	function WorldLoad(filename, extension: TString50; titleOnly: boolean): boolean;
+ 	procedure WorldSave(filename, extension: TString50);
+@@ -107,7 +108,7 @@ const
+ 	LineChars: string[16] = #249#208#210#186#181#188#187#185#198#200#201#204#205#202#203#206;
+ 
+ implementation
+-uses Dos, Crt, Video, Sounds, Input, Elements, Editor, Oop;
++uses Dos, Crt, EmsMem, Video, Sounds, Input, Elements, Editor, Oop;
+ 
+ procedure SidebarClearLine(y: integer);
+ 	begin
+@@ -207,10 +208,12 @@ procedure BoardClose;
+ 			end;
+ 		end;
+ 
+-		FreeMem(World.BoardData[World.Info.CurrentBoard], World.BoardLen[World.Info.CurrentBoard]);
++		EmsFree(World.BoardData[World.Info.CurrentBoard], World.BoardLen[World.Info.CurrentBoard]);
+ 		World.BoardLen[World.Info.CurrentBoard] := Ofs(ptr^) - Ofs(IoTmpBuf^);
+-		GetMem(World.BoardData[World.Info.CurrentBoard], World.BoardLen[World.Info.CurrentBoard]);
+-		Move(IoTmpBuf^, World.BoardData[World.Info.CurrentBoard]^, World.BoardLen[World.Info.CurrentBoard]);
++		EmsAllocate(World.BoardData[World.Info.CurrentBoard], World.BoardLen[World.Info.CurrentBoard]);
++		if not DisplayEMSError(true) then begin
++			EmsMoveTo(World.BoardLen[World.Info.CurrentBoard], IoTmpBuf, World.BoardData[World.Info.CurrentBoard]);
++		end;
+ 	end;
+ 
+ procedure BoardOpen(boardId: integer);
+@@ -222,7 +225,8 @@ procedure BoardOpen(boardId: integer);
+ 		if boardId > World.BoardCount then
+ 			boardId := World.Info.CurrentBoard;
+ 
+-		ptr := World.BoardData[boardId];
++		EmsMoveFrom(World.BoardLen[boardId], World.BoardData[boardId], IoTmpBuf);
++		ptr := IoTmpBuf;
+ 
+ 		Move(ptr^, Board.Name, SizeOf(Board.Name));
+ 		AdvancePointer(ptr, SizeOf(Board.Name));
+@@ -679,13 +683,45 @@ function DisplayIOError: boolean;
+ 		TextWindowFree(textWindow);
+ 	end;
+ 
++function DisplayEMSError(fatal: boolean): boolean;
++	var
++		errorNumStr: string[50];
++		textWindow: TTextWindowState;
++	begin
++		if EMSError = 0 then begin
++			DisplayEMSError := false;
++			exit;
++		end;
++
++		DisplayEMSError := true;
++
++		Str(EMSError, textWindow.Title);
++		if fatal then
++			textWindow.Title := 'Fatal Error # ' + textWindow.Title
++		else
++			textWindow.Title := 'Error # ' + textWindow.Title;
++		TextWindowInitState(textWindow);
++		TextWindowAppend(textWindow, '$Memory Error: ');
++		TextWindowAppend(textWindow, '');
++		TextWindowAppend(textWindow, 'This may be caused by running');
++		TextWindowAppend(textWindow, 'out of free memory space.');
++
++		TextWindowDrawOpen(textWindow);
++		TextWindowSelect(textWindow, false, false);
++		TextWindowDrawClose(textWindow);
++		TextWindowFree(textWindow);
++
++		if fatal then
++			RunError(203);
++	end;
++
+ procedure WorldUnload;
+ 	var
+ 		i: integer;
+ 	begin
+ 		BoardClose;
+ 		for i := 0 to World.BoardCount do
+-			FreeMem(World.BoardData[i], World.BoardLen[i]);
++			EmsFree(World.BoardData[i], World.BoardLen[i]);
+ 	end;
+ 
+ function WorldLoad(filename, extension: TString50; titleOnly: boolean): boolean;
+@@ -743,8 +779,11 @@ function WorldLoad(filename, extension:
+ 				for boardId := 0 to World.BoardCount do begin
+ 					SidebarAnimateLoading;
+ 					BlockRead(f, World.BoardLen[boardId], 2);
+-					GetMem(World.BoardData[boardId], World.BoardLen[boardId]);
+-					BlockRead(f, World.BoardData[boardId]^, World.BoardLen[boardId]);
++					EmsAllocate(World.BoardData[boardId], World.BoardLen[boardId]);
++					if not DisplayEMSError(true) then begin
++						BlockRead(f, IoTmpBuf^, World.BoardLen[boardId]);
++						EmsMoveTo(World.BoardLen[boardId], IoTmpBuf, World.BoardData[boardId]);
++					end;
+ 				end;
+ 
+ 				Close(f);
+@@ -795,7 +834,8 @@ procedure WorldSave(filename, extension:
+ 				BlockWrite(f, World.BoardLen[i], 2);
+ 				if DisplayIOError then goto OnError;
+ 
+-				BlockWrite(f, World.BoardData[i]^, World.BoardLen[i]);
++				EmsMoveFrom(World.BoardLen[i], World.BoardData[i], IoTmpBuf);
++				BlockWrite(f, IoTmpBuf^, World.BoardLen[i]);
+ 				if DisplayIOError then goto OnError;
+ 			end;
+ 		end;
+@@ -1091,6 +1131,7 @@ function Difference(a, b: integer): inte
+ procedure GameUpdateSidebar;
+ 	var
+ 		numStr: string[8];
++		numStrEms: string[8];
+ 		i: integer;
+ 	begin
+ 		if GameStateElement = E_PLAYER then begin
+@@ -1141,7 +1182,14 @@ procedure GameUpdateSidebar;
+ 
+ 			if DebugEnabled then begin
+ 				Str(MemAvail, numStr);
+-				VideoWriteText(69, 4, $1E, 'm' + numStr + ' ');
++				if EmsAvailable then begin
++					Str(EmsPagesAvail, numStrEms);
++					VideoWriteText(75 - Length(numStr) - Length(numStrEms), 4, $1E,
++						'm' + numStrEms + 'p+' + numStr);
++				end else begin
++					VideoWriteText(77 - Length(numStr), 4, $1E,
++						'm' + numStr);
++				end;
+ 			end;
+ 		end;
+ 	end;
+diff -Nrup src.orig/SRC/GAMEVARS.PAS src/SRC/GAMEVARS.PAS
+--- src.orig/SRC/GAMEVARS.PAS	2020-03-16 14:53:28.665824692 +0100
++++ src/SRC/GAMEVARS.PAS	2020-03-16 21:14:12.279856175 +0100
+@@ -26,6 +26,7 @@
+ unit GameVars;
+ 
+ interface
++	uses EmsMem;
+ 	const
+ 		MAX_STAT = 150;
+ 		MAX_ELEMENT = 53;
+@@ -135,8 +136,8 @@ interface
+ 		end;
+ 		TWorld = record
+ 			BoardCount: integer;
+-			BoardData: array[0 .. MAX_BOARD] of pointer;
+-			BoardLen: array[0 .. MAX_BOARD] of integer;
++			BoardData: array[0 .. MAX_BOARD] of EmsPointer;
++			BoardLen: array[0 .. MAX_BOARD] of word;
+ 			Info: TWorldInfo;
+ 			EditorStatSettings: array[0 .. MAX_ELEMENT] of TEditorStatSetting;
+ 		end;
+diff -Nrup src.orig/SRC/ZZT.PAS src/SRC/ZZT.PAS
+--- src.orig/SRC/ZZT.PAS	2020-03-16 14:53:28.666824692 +0100
++++ src/SRC/ZZT.PAS	2020-03-16 21:07:38.784881586 +0100
+@@ -26,7 +26,7 @@
+ {$I-}
+ {$M 49152,163840,655360}
+ program ZZT;
+-uses Crt, Dos, Video, Keys, Sounds, Input, TxtWind, GameVars, Elements, Editor, Oop, Game;
++uses Crt, Dos, EmsMem, Video, Keys, Sounds, Input, TxtWind, GameVars, Elements, Editor, Oop, Game;
+ 
+ procedure ParseArguments;
+ 	var
+@@ -43,6 +43,8 @@ procedure ParseArguments;
+ 					end;
+ 					'R': ResetConfig := true;
+ 				end;
++				if pArg = '/NOEMS' then
++					EmsForceDisable;
+ 			end else begin
+ 				StartupWorldFileName := pArg;
+ 				if (Length(StartupWorldFileName) > 4) and (StartupWorldFileName[Length(StartupWorldFileName) - 3] = '.') then begin
