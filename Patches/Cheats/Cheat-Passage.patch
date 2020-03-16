@@ -1,0 +1,21 @@
+Name: Cheat - Passage
+Author: Adrian Siekierka <kontakt@asie.pl>
+
+This cheat allows teleporting to any in-world board during gameplay.
+
+--- src.orig/SRC/GAME.PAS	2020-03-16 14:53:28.665824692 +0100
++++ src/SRC/GAME.PAS	2020-03-16 23:07:38.823416621 +0100
+@@ -1394,6 +1394,13 @@ procedure GameDebugPrompt;
+ 		else if input = 'DARK' then begin
+ 			Board.Info.IsDark := toggle;
+ 			TransitionDrawToBoard;
++		end else if input = 'PASSAGE' then begin
++			if GameStateElement = E_PLAYER then begin
++				BoardChange(EditorSelectBoard('Teleport to', World.Info.CurrentBoard, false));
++				GamePaused := true;
++				TransitionDrawBoardChange;
++				BoardEnter;
++			end;
+ 		end else if input = 'ZAP' then begin
+ 			for i := 0 to 3 do begin
+ 				BoardDamageTile(Board.Stats[0].X + NeighborDeltaX[i], Board.Stats[0].Y + NeighborDeltaY[i]);

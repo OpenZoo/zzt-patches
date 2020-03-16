@@ -1,0 +1,20 @@
+Name: Fix black key/door messages
+Author: Adrian Siekierka <kontakt@asie.pl>
+
+In ZZT, collecting a hacked black key or using a matching door causes an
+out-of-bounds string looking, leading to a broken message. The simple
+fix is to cover this case in the original string array.
+
+--- src.orig/SRC/GAME.PAS	2020-03-16 14:53:28.665824692 +0100
++++ src/SRC/GAME.PAS	2020-03-16 22:53:08.047472854 +0100
+@@ -89,8 +89,8 @@ const
+ 	ProgressAnimColors: array[0 .. 7] of byte = ($14, $1C, $15, $1D, $16, $1E, $17, $1F);
+ 	ProgressAnimStrings: array[0 .. 7] of string[5] =
+ 		('....|', '...*/', '..*.-', '.*..\', '*...|', '..../', '....-', '....\');
+-	ColorNames: array[1 .. 7] of string[8] =
+-		('Blue', 'Green', 'Cyan', 'Red', 'Purple', 'Yellow', 'White');
++	ColorNames: array[0 .. 7] of string[8] =
++		('Black', 'Blue', 'Green', 'Cyan', 'Red', 'Purple', 'Yellow', 'White');
+ 	{}
+ 	DiagonalDeltaX: array[0 .. 7] of integer = (-1, 0, 1, 1, 1, 0, -1, -1);
+ 	DiagonalDeltaY: array[0 .. 7] of integer = (1, 1, 1, 0, -1, -1, -1, 0);

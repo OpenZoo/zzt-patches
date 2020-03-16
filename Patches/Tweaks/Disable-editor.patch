@@ -1,0 +1,43 @@
+Name: Disable editor
+Author: Adrian Siekierka <kontakt@asie.pl>
+
+Permanently disables the editor, reliant on the compiler's ability to
+eliminate dead code. Shaves almost 16KB off an unmodified binary.
+
+--- src.orig/SRC/GAMEVARS.PAS	2020-03-16 14:53:28.665824692 +0100
++++ src/SRC/GAMEVARS.PAS	2020-03-16 22:48:57.993489002 +0100
+@@ -38,6 +38,7 @@ interface
+ 		TORCH_DX = 8;
+ 		TORCH_DY = 5;
+ 		TORCH_DIST_SQR = 50;
++		EditorEnabled = false;
+ 	type
+ 		TString50 = string[50];
+ 		TCoord = record
+@@ -204,7 +205,6 @@ interface
+ 		HighScoreList: THighScoreList;
+ 		ConfigRegistration: string;
+ 		ConfigWorldFile: TString50;
+-		EditorEnabled: boolean;
+ 		GameVersion: TString50;
+ 		ParsingConfigFile: boolean;
+ 		ResetConfig: boolean; { This flag is a remnant from ZZT 3.0. }
+diff -Nrup src.orig/SRC/ZZT.PAS src/SRC/ZZT.PAS
+--- src.orig/SRC/ZZT.PAS	2020-03-16 14:53:28.666824692 +0100
++++ src/SRC/ZZT.PAS	2020-03-16 22:48:43.791489920 +0100
+@@ -59,7 +59,6 @@ procedure GameConfigure;
+ 		cfgFile: text;
+ 	begin
+ 		ParsingConfigFile := true;
+-		EditorEnabled := true;
+ 		ConfigRegistration := '';
+ 		ConfigWorldFile := '';
+ 		GameVersion := '3.2';
+@@ -71,7 +70,6 @@ procedure GameConfigure;
+ 			Readln(cfgFile, ConfigRegistration);
+ 		end;
+ 		if ConfigWorldFile[1] = '*' then begin
+-			EditorEnabled := false;
+ 			ConfigWorldFile := Copy(ConfigWorldFile, 2, Length(ConfigWorldFile) - 1);
+ 		end;
+ 		if Length(ConfigWorldFile) <> 0 then begin

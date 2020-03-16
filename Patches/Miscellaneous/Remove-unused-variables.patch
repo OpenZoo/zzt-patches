@@ -1,0 +1,139 @@
+Name: Remove never-used variables
+Author: Adrian Siekierka <kontakt@asie.pl>
+
+--- src.orig/SRC/EDITOR.PAS	2020-03-16 14:53:28.664824692 +0100
++++ src/SRC/EDITOR.PAS	2020-03-16 22:58:10.424453328 +0100
+@@ -79,7 +79,6 @@ procedure EditorLoop;
+ 		cursorPattern, cursorColor: integer;
+ 		i, iElem: integer;
+ 		canModify: boolean;
+-		unk1: array[0 .. 49] of byte;
+ 		copiedStat: TStat; { 68 : 6b }
+ 		copiedHasStat: boolean; { 6d }
+ 		copiedTile: TTile;
+@@ -353,7 +352,6 @@ procedure EditorLoop;
+ 		var
+ 			state: TTextWindowState;
+ 			iLine, iChar: integer;
+-			unk1: array[0 .. 51] of byte;
+ 			dataChar: char;
+ 			dataPtr: pointer;
+ 		begin
+@@ -1086,9 +1084,7 @@ function EditorGetBoardName(boardId: int
+ 
+ function EditorSelectBoard(title: string; currentBoard: integer; titleScreenIsNone: boolean): integer;
+ 	var
+-		unk1: string;
+ 		i: integer;
+-		unk2: integer;
+ 		textWindow: TTextWindowState;
+ 	begin
+ 		textWindow.Title := title;
+diff -Nrup src.orig/SRC/ELEMENTS.PAS src/SRC/ELEMENTS.PAS
+--- src.orig/SRC/ELEMENTS.PAS	2020-03-16 14:53:28.665824692 +0100
++++ src/SRC/ELEMENTS.PAS	2020-03-16 22:57:48.240454760 +0100
+@@ -892,8 +892,6 @@ procedure ElementMove(oldX, oldY, newX,
+ 	end;
+ 
+ procedure ElementPushablePush(x, y: integer; deltaX, deltaY: integer);
+-	var
+-		unk1: integer;
+ 	begin
+ 		with Board.Tiles[x][y] do begin
+ 			if ((Element = E_SLIDER_NS) and (deltaX = 0)) or ((Element = E_SLIDER_EW) and (deltaY = 0))
+@@ -1022,7 +1020,6 @@ procedure ElementScrollTouch(x, y: integ
+ 	var
+ 		textWindow: TTextWindowState;
+ 		statId: integer;
+-		unk1: integer;
+ 	begin
+ 		statId := GetStatIdAt(x, y);
+ 
+@@ -1314,7 +1311,6 @@ procedure GamePromptEndPlay;
+ 
+ procedure ElementPlayerTick(statId: integer);
+ 	var
+-		unk1, unk2, unk3: integer;
+ 		i: integer;
+ 		bulletCount: integer;
+ 	begin
+diff -Nrup src.orig/SRC/GAME.PAS src/SRC/GAME.PAS
+--- src.orig/SRC/GAME.PAS	2020-03-16 14:53:28.665824692 +0100
++++ src/SRC/GAME.PAS	2020-03-16 22:58:20.549452674 +0100
+@@ -764,7 +764,6 @@ procedure WorldSave(filename, extension:
+ 	var
+ 		f: file;
+ 		i: integer;
+-		unk1: integer;
+ 		ptr: pointer;
+ 		version: integer;
+ 	label OnError;
+diff -Nrup src.orig/SRC/GAMEVARS.PAS src/SRC/GAMEVARS.PAS
+--- src.orig/SRC/GAMEVARS.PAS	2020-03-16 14:53:28.665824692 +0100
++++ src/SRC/GAMEVARS.PAS	2020-03-16 22:57:40.280455274 +0100
+@@ -149,8 +149,6 @@ interface
+ 	var
+ 		PlayerDirX: integer;
+ 		PlayerDirY: integer;
+-		unkVar_0476: integer;
+-		unkVar_0478: integer;
+ 
+ 		TransitionTable: array[1 .. 80*25] of TCoord;
+ 		LoadedGameFileName: TString50;
+@@ -170,7 +168,6 @@ interface
+ 		MessageFakeNotShown: boolean;
+ 		MessageGemNotShown: boolean;
+ 		MessageEnergizerNotShown: boolean;
+-		unkVar_4ABA: array[0 .. 14] of byte;
+ 
+ 		GameTitleExitRequested: boolean;
+ 		GamePlayExitRequested: boolean;
+diff -Nrup src.orig/SRC/OOP.PAS src/SRC/OOP.PAS
+--- src.orig/SRC/OOP.PAS	2020-03-16 14:53:28.665824692 +0100
++++ src/SRC/OOP.PAS	2020-03-16 22:58:13.064453157 +0100
+@@ -262,7 +262,6 @@ function OopIterateStat(statId: integer;
+ function OopFindLabel(statId: integer; sendLabel: string; var iStat, iDataPos: integer; labelPrefix: string): boolean;
+ 	var
+ 		targetSplitPos: integer;
+-		unk1: integer;
+ 		targetLookup: string[20];
+ 		objectMessage: string[20];
+ 		foundStat: boolean;
+diff -Nrup src.orig/SRC/TXTWIND.PAS src/SRC/TXTWIND.PAS
+--- src.orig/SRC/TXTWIND.PAS	2020-03-16 14:53:28.666824692 +0100
++++ src/SRC/TXTWIND.PAS	2020-03-16 22:57:17.067456773 +0100
+@@ -127,7 +127,6 @@ procedure TextWindowDrawOpen(var state:
+ procedure TextWindowDrawClose(var state: TTextWindowState);
+ 	var
+ 		ix, iy: integer;
+-		unk1, unk2: integer;
+ 	begin
+ 		with state do begin
+ 			for iy := 0 to (TextWindowHeight div 2) do begin
+@@ -199,7 +198,6 @@ procedure TextWindowDrawLine(var state:
+ procedure TextWindowDraw(var state: TTextWindowState; withoutFormatting, viewingFile: boolean);
+ 	var
+ 		i: integer;
+-		unk1: integer;
+ 	begin
+ 		for i := 0 to (TextWindowHeight - 4) do
+ 			TextWindowDrawLine(state, state.LinePos - (TextWindowHeight div 2) + i + 2,
+@@ -271,7 +269,6 @@ procedure TextWindowPrint(var state: TTe
+ procedure TextWindowSelect(var state: TTextWindowState; hyperlinkAsSelect, viewingFile: boolean);
+ 	var
+ 		newLinePos: integer;
+-		unk1: integer;
+ 		iLine, iChar: integer;
+ 		pointerStr: string[20];
+ 	label LabelMatched;
+diff -Nrup src.orig/SRC/ZZT.PAS src/SRC/ZZT.PAS
+--- src.orig/SRC/ZZT.PAS	2020-03-16 14:53:28.666824692 +0100
++++ src/SRC/ZZT.PAS	2020-03-16 22:58:14.834453043 +0100
+@@ -54,7 +54,6 @@ procedure ParseArguments;
+ 
+ procedure GameConfigure;
+ 	var
+-		unk1: integer;
+ 		joystickEnabled, mouseEnabled: boolean;
+ 		cfgFile: text;
+ 	begin
