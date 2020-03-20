@@ -1,0 +1,46 @@
+Name: Flexible unpause behaviour
+Author: Adrian Siekierka <kontakt@asie.pl>
+Conditional: unpauseGameOnPKey true "P" key unpauses game
+Conditional: unpauseGameOnMovement false (Breaking) Move attempt unpauses game
+
+--- src.orig/SRC/GAME.PAS	2020-03-16 14:53:28.665824692 +0100
++++ src/SRC/GAME.PAS	2020-03-20 18:38:30.051350436 +0100
+@@ -1417,6 +1417,7 @@ procedure GamePlayLoop(boardChanged: boo
+ 	var
+ 		exitLoop: boolean;
+ 		pauseBlink: boolean;
++		unpauseGame: boolean;
+ 	procedure GameDrawSidebar;
+ 		begin
+ 			SidebarClear;
+@@ -1535,7 +1536,15 @@ procedure GamePlayLoop(boardChanged: boo
+ 				if InputKeyPressed = KEY_ESCAPE then
+ 					GamePromptEndPlay;
+ 
++				unpauseGame := false;
++{$IFDEF unpauseGameOnPKey}
++				if UpCase(InputKeyPressed) = 'P' then
++					unpauseGame := true;
++{$ENDIF}
+ 				if (InputDeltaX <> 0) or (InputDeltaY <> 0) then begin
++{$IFDEF unpauseGameOnMovement}
++					unpauseGame := true;
++{$ENDIF}
+ 					ElementDefs[Board.Tiles[Board.Stats[0].X + InputDeltaX][Board.Stats[0].Y + InputDeltaY].Element].TouchProc(
+ 						Board.Stats[0].X + InputDeltaX, Board.Stats[0].Y + InputDeltaY, 0, InputDeltaX, InputDeltaY);
+ 				end;
+@@ -1556,9 +1565,14 @@ procedure GamePlayLoop(boardChanged: boo
+ 						DrawPlayerSurroundings(Board.Stats[0].X, Board.Stats[0].Y, 0);
+ 						DrawPlayerSurroundings(Board.Stats[0].X - InputDeltaX, Board.Stats[0].Y - InputDeltaY, 0);
+ 					end;
++					unpauseGame := true;
++				end;
+ 
++				if unpauseGame then begin
+ 					{ Unpause }
+ 					GamePaused := false;
++					{ The player might be invisible if the stat wasn't moved in the above code }
++					BoardDrawTile(Board.Stats[0].X, Board.Stats[0].Y);
+ 					SidebarClearLine(5);
+ 					CurrentTick := Random(100);
+ 					CurrentStatTicked := Board.StatCount + 1;
