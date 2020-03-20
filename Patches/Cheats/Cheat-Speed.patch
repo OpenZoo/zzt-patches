@@ -1,0 +1,19 @@
+Name: Cheat - Speed
+Author: Adrian Siekierka <kontakt@asie.pl>
+
+This cheat allows changing game speed at runtime.
+
+--- src.orig/SRC/GAME.PAS	2020-03-16 14:53:28.665824692 +0100
++++ src/SRC/GAME.PAS	2020-03-19 00:57:50.952982567 +0100
+@@ -1394,6 +1394,11 @@ procedure GameDebugPrompt;
+ 		else if input = 'DARK' then begin
+ 			Board.Info.IsDark := toggle;
+ 			TransitionDrawToBoard;
++		end else if input = 'SPEED' then begin
++			SidebarPromptSlider(true, 63, 3, 'Game speed:;FS', TickSpeed);
++			SidebarClearLine(3);
++			TickTimeDuration := TickSpeed * 2;
++			InputKeyPressed := #0;
+ 		end else if input = 'ZAP' then begin
+ 			for i := 0 to 3 do begin
+ 				BoardDamageTile(Board.Stats[0].X + NeighborDeltaX[i], Board.Stats[0].Y + NeighborDeltaY[i]);

@@ -1,0 +1,120 @@
+Name: Optimize OOP concatenations
+Author: Adrian Siekierka <kontakt@asie.pl>
+
+--- src.orig/SRC/OOP.PAS	2020-03-16 14:53:28.665824692 +0100
++++ src/SRC/OOP.PAS	2020-03-20 18:20:59.069418307 +0100
+@@ -59,8 +59,10 @@ procedure OopReadChar(statId: integer; v
+ 	end;
+ 
+ procedure OopReadWord(statId: integer; var position: integer);
++	var
++		wordPos: byte;
+ 	begin
+-		OopWord := '';
++		wordPos := 0;
+ 		repeat
+ 			OopReadChar(statId, position);
+ 		until OopChar <> ' ';
+@@ -69,11 +71,13 @@ procedure OopReadWord(statId: integer; v
+ 			while ((OopChar >= 'A') and (OopChar <= 'Z')) or (OopChar = ':')
+ 				or ((OopChar >= '0') and (OopChar <= '9')) or (OopChar = '_') do
+ 			begin
+-				OopWord := OopWord + OopChar;
++				Inc(wordPos);
++				OopWord[wordPos] := OopChar;
+ 				OopReadChar(statId, position);
+ 				OopChar := UpCase(OopChar);
+ 			end;
+ 		end;
++		OopWord[0] := Chr(wordPos);
+ 		if position > 0 then
+ 			Dec(position);
+ 	end;
+@@ -82,19 +86,22 @@ procedure OopReadValue(statId: integer;
+ 	var
+ 		s: string[20];
+ 		code: integer;
++		wordPos: byte;
+ 	begin
+-		s := '';
++		wordPos := 0;
+ 		repeat
+ 			OopReadChar(statId, position)
+ 		until OopChar <> ' ';
+ 
+ 		OopChar := UpCase(OopChar);
+ 		while (OopChar >= '0') and (OopChar <= '9') do begin
+-			s := s + OopChar;
++			Inc(wordPos);
++			s[wordPos] := OopChar;
+ 			OopReadChar(statId, position);
+ 			OopChar := UpCase(OopChar);
+ 		end;
+ 
++		s[0] := Chr(wordPos);
+ 		if position > 0 then
+ 			position := position - 1;
+ 
+@@ -184,6 +191,8 @@ function OopFindString(statId: integer;
+ 		pos, wordPos, cmpPos: integer;
+ 	label NoMatch;
+ 	begin
++		for pos := 1 to Length(s) do
++			s[pos] := UpCase(s[pos]);
+ 		with Board.Stats[statId] do begin
+ 			pos := 0;
+ 			while pos <= DataLen do begin
+@@ -191,7 +200,7 @@ function OopFindString(statId: integer;
+ 				cmpPos := pos;
+ 				repeat
+ 					OopReadChar(statId, cmpPos);
+-					if UpCase(s[wordPos]) <> UpCase(OopChar) then
++					if s[wordPos] <> UpCase(OopChar) then
+ 						goto NoMatch;
+ 					wordPos := wordPos + 1;
+ 				until wordPos > Length(s);
+@@ -335,15 +344,20 @@ function OopStripChars(input: TString50)
+ 	var
+ 		output: string[50];
+ 		i: integer;
++		outPos: byte;
+ 	begin
+-		output := '';
++		outPos := 0;
+ 		for i := 1 to Length(input) do begin
+ 			if ((input[i] >= 'A') and (input[i] <= 'Z'))
+-				or ((input[i] >= '0') and (input[i] <= '9')) then
+-				output := output + input[i]
+-			else if ((input[i] >= 'a') and (input[i] <= 'z')) then
+-				output := output + Chr(Ord(input[i]) - $20);
++				or ((input[i] >= '0') and (input[i] <= '9')) then begin
++				Inc(outPos);
++				output[outPos] := input[i]
++			end else if ((input[i] >= 'a') and (input[i] <= 'z')) then begin
++				Inc(outPos);
++				output[outPos] := Chr(Ord(input[i]) - $20);
++			end;
+ 		end;
++		output[0] := Chr(outPos);
+ 		OopStripChars := output;
+ 	end;
+ 
+@@ -474,13 +488,16 @@ function OopCheckCondition(statId: integ
+ function OopReadLineToEnd(statId: integer; var position: integer) : string;
+ 	var
+ 		s: string;
++		sPos: byte;
+ 	begin
+-		s := '';
++		sPos := 0;
+ 		OopReadChar(statId, position);
+ 		while (OopChar <> #0) and (OopChar <> #13) do begin
+-			s := s + OopChar;
++			Inc(sPos);
++			s[sPos] := OopChar;
+ 			OopReadChar(statId, position);
+ 		end;
++		s[0] := Chr(sPos);
+ 		OopReadLineToEnd := s;
+ 	end;
+ 
