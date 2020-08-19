@@ -1,0 +1,33 @@
+Name: Fix conveyor stat swapping
+Author: Adrian Siekierka <kontakt@asie.pl>
+
+--- src.orig/SRC/ELEMENTS.PAS	2020-07-15 12:53:19.961104013 +0200
++++ src/SRC/ELEMENTS.PAS	2020-08-19 18:00:55.537892572 +0200
+@@ -451,6 +451,7 @@ procedure ElementConveyorTick(x, y: inte
+ 		ix, iy: integer;
+ 		canMove: boolean;
+ 		tiles: array[0..7] of TTile;
++		statIds: array[0..7] of integer;
+ 		iMin, iMax: integer;
+ 		tmpTile: TTile;
+ 	begin
+@@ -471,6 +472,10 @@ procedure ElementConveyorTick(x, y: inte
+ 					canMove := true
+ 				else if not ElementDefs[Element].Pushable then
+ 					canMove := false;
++				{ FIX: In some cases, a movement could cause two stats to briefly overlap each other. }
++				{ Pre-find stat IDs to prevent such a scenario from occuring. }
++				if ElementDefs[Element].Cycle > -1 then
++					statIds[i] := GetStatIdAt(x + DiagonalDeltaX[i], y + DiagonalDeltaY[i])
+ 			end;
+ 			i := i + direction;
+ 		until i = iMax;
+@@ -484,7 +489,7 @@ procedure ElementConveyorTick(x, y: inte
+ 						iy := y + DiagonalDeltaY[(i - direction + 8) mod 8];
+ 						if ElementDefs[Element].Cycle > -1 then begin
+ 							tmpTile := Board.Tiles[x + DiagonalDeltaX[i]][y + DiagonalDeltaY[i]];
+-							iStat := GetStatIdAt(x + DiagonalDeltaX[i], y + DiagonalDeltaY[i]);
++							iStat := statIds[i];
+ 							Board.Tiles[x + DiagonalDeltaX[i]][y + DiagonalDeltaY[i]] := tiles[i];
+ 							Board.Tiles[ix][iy].Element := E_EMPTY;
+ 							MoveStat(iStat, ix, iy);

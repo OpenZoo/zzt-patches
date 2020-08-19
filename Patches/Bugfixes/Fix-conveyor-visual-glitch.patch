@@ -1,0 +1,14 @@
+Name: Fix conveyor visual glitch
+Author: Adrian Siekierka <kontakt@asie.pl>
+
+--- src.orig/SRC/ELEMENTS.PAS	2020-07-15 12:53:19.961104013 +0200
++++ src/SRC/ELEMENTS.PAS	2020-08-19 18:03:59.479880693 +0200
+@@ -489,6 +489,8 @@ procedure ElementConveyorTick(x, y: inte
+ 							Board.Tiles[ix][iy].Element := E_EMPTY;
+ 							MoveStat(iStat, ix, iy);
+ 							Board.Tiles[x + DiagonalDeltaX[i]][y + DiagonalDeltaY[i]] := tmpTile;
++							{ FIX: Add missing BoardDrawTile. }
++							BoardDrawTile(x + DiagonalDeltaX[i], y + DiagonalDeltaY[i]);
+ 						end else begin
+ 							Board.Tiles[ix][iy] := tiles[i];
+ 							BoardDrawTile(ix, iy);
