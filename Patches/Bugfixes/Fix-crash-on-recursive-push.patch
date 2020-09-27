@@ -1,0 +1,42 @@
+Author: Ben Russell <thematrixeatsyou@gmail.com>
+Date:   Mon Mar 16 21:37:43 2020 +1300
+
+Fix crashes based on an element recursively pushing itself.
+
+The most common case of this is when you duplicate a player-pushable
+element onto a player, which ends up calling the `TouchProc` against
+the source element with a direction equal to the player's movement
+direction.
+
+Another case is performing a `#go idle` in a scroll.
+
+Either way, both of these will no longer crash ZZT.
+
+This does not, however, prevent the player from moving onto a
+duplicator's destination on the same tick that the duplicator fires
+and then the duplicator source ends up moving based on the player's
+move direction. That is a different bug which typically doesn't
+crash the game.
+
+diff --git a/SRC/ELEMENTS.PAS b/SRC/ELEMENTS.PAS
+index 6849c5e..ec2274d 100644
+--- a/SRC/ELEMENTS.PAS
++++ b/SRC/ELEMENTS.PAS
+@@ -899,10 +899,13 @@ procedure ElementPushablePush(x, y: integer; deltaX, deltaY: integer);
+ 			if ((Element = E_SLIDER_NS) and (deltaX = 0)) or ((Element = E_SLIDER_EW) and (deltaY = 0))
+ 				or ElementDefs[Element].Pushable then
+ 			begin
+-				if Board.Tiles[x + deltaX][y + deltaY].Element = E_TRANSPORTER then
+-					ElementTransporterMove(x, y, deltaX, deltaY)
+-				else if Board.Tiles[x + deltaX][y + deltaY].Element <> E_EMPTY then
+-					ElementPushablePush(x + deltaX, y + deltaY, deltaX, deltaY);
++				if Board.Tiles[x + deltaX][y + deltaY].Element = E_TRANSPORTER then begin
++					ElementTransporterMove(x, y, deltaX, deltaY);
++				end else if Board.Tiles[x + deltaX][y + deltaY].Element <> E_EMPTY then begin
++					if (deltaX <> 0) or (deltaY <> 0) then begin
++						ElementPushablePush(x + deltaX, y + deltaY, deltaX, deltaY);
++					end;
++				end;
+ 
+ 				if not ElementDefs[Board.Tiles[x + deltaX][y + deltaY].Element].Walkable
+ 					and ElementDefs[Board.Tiles[x + deltaX][y + deltaY].Element].Destructible

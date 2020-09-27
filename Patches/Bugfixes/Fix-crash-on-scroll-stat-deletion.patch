@@ -1,0 +1,23 @@
+Author: Ben Russell <thematrixeatsyou@gmail.com>
+Date:   Mon Mar 16 19:56:00 2020 +1300
+
+Fix the crash that happens when you delete the stat from a scroll when
+said stat is no longer there.
+
+This allows the use of `#become` and `/dir`, of which the latter can
+preserve the scroll if it manages to actually move.
+
+--- a/SRC/ELEMENTS.PAS
++++ b/SRC/ELEMENTS.PAS
+@@ -1036,7 +1036,10 @@ procedure ElementScrollTouch(x, y: integer; unkArg1: integer; var deltaX, deltaY
+ 			OopExecute(statId, DataPos, 'Scroll');
+ 		end;
+ 
+-		RemoveStat(GetStatIdAt(x, y));
++		statId := GetStatIdAt(x, y);
++		if statId <> -1 then begin
++			RemoveStat(statId);
++		end;
+ 	end;
+ 
+ procedure ElementKeyTouch(x, y: integer; unkArg1: integer; var deltaX, deltaY: integer);
