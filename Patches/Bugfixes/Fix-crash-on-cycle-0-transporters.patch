@@ -1,0 +1,27 @@
+Name: Fix crash on cycle 0 transporters.
+Author: zzo38 <?>
+
+diff -Nrup reconstruction-of-zzt/SRC/ELEMENTS.PAS zoo/SRC/ELEMENTS.PAS
+--- reconstruction-of-zzt/SRC/ELEMENTS.PAS	2020-08-01 22:26:21.247282331 +0200
++++ zoo/SRC/ELEMENTS.PAS	2020-09-27 14:28:26.718609676 +0200
+@@ -657,12 +657,18 @@ procedure ElementTransporterTick(statId:
+ 	end;
+ 
+ procedure ElementTransporterDraw(x, y: integer; var ch: byte);
++	var
++		i: integer;
+ 	begin
+ 		with Board.Stats[GetStatIdAt(x, y)] do begin
++			if Cycle = 0 then
++				i := 0
++			else
++				i := (CurrentTick div Cycle) mod 4;
+ 			if StepX = 0 then
+-				ch := Ord(TransporterNSChars[StepY * 2 + 3 + (CurrentTick div Cycle) mod 4])
++				ch := Ord(TransporterNSChars[StepY * 2 + 3 + i])
+ 			else
+-				ch := Ord(TransporterEWChars[StepX * 2 + 3 + (CurrentTick div Cycle) mod 4]);
++				ch := Ord(TransporterEWChars[StepX * 2 + 3 + i]);
+ 		end;
+ 	end;
+ 

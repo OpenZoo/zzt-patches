@@ -1,0 +1,47 @@
+Name: Super ZZT centipede fixes
+Author: Tim Sweeney
+
+Super ZZT had some minor fixes to centipede logic:
+
+* When turning a head into a tail, the leader value is now correctly reset.
+* Non-positive stat ID values of Follower other than -1 are now ignored.
+* Removed redundant setting of temporary position variables.
+* Unified checks for whether or not stats are centipede segments.
+
+diff -Nrup reconstruction-of-zzt/SRC/ELEMENTS.PAS zoo/SRC/ELEMENTS.PAS
+--- reconstruction-of-zzt/SRC/ELEMENTS.PAS	2020-08-01 22:26:21.247282331 +0200
++++ zoo/SRC/ELEMENTS.PAS	2020-09-27 16:21:16.776296042 +0200
+@@ -251,9 +251,10 @@ procedure ElementCentipedeHeadTick(statI
+ 					statId := tmp;
+ 				end;
+ 				Board.Stats[statId].Follower := Board.Stats[statId].Leader;
++				Board.Stats[statId].Leader := -1;
+ 				Board.Tiles[Board.Stats[statId].X][Board.Stats[statId].Y].Element := E_CENTIPEDE_HEAD;
+ 			end else if Board.Tiles[X + StepX][Y + StepY].Element = E_PLAYER then begin
+-				if Follower <> -1 then begin
++				if Follower > 0 then begin
+ 					Board.Tiles[Board.Stats[Follower].X][Board.Stats[Follower].Y].Element := E_CENTIPEDE_HEAD;
+ 					Board.Stats[Follower].StepX := StepX;
+ 					Board.Stats[Follower].StepY := StepY;
+@@ -262,10 +263,6 @@ procedure ElementCentipedeHeadTick(statI
+ 				BoardAttack(statId, X + StepX, Y + StepY);
+ 			end else begin
+ 				MoveStat(statId, X + StepX, Y + StepY);
+-				tx := X - StepX;
+-				ty := Y - StepY;
+-				ix := StepX;
+-				iy := StepY;
+ 
+ 				repeat
+ 					with Board.Stats[statId] do begin
+@@ -289,7 +286,9 @@ procedure ElementCentipedeHeadTick(statI
+ 							end;
+ 						end;
+ 
+-						if Follower > 0 then begin
++						if (Follower > 0)
++							and (Board.Tiles[Board.Stats[Follower].X][Board.Stats[Follower].Y].Element = E_CENTIPEDE_SEGMENT)
++						then begin
+ 							Board.Stats[Follower].Leader := statId;
+ 							Board.Stats[Follower].P1 := P1;
+ 							Board.Stats[Follower].P2 := P2;
